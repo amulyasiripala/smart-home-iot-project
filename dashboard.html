@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>Smart Lock Dashboard</title>
+
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+
+body{
+margin:0;
+font-family:Arial;
+color:white;
+overflow:hidden;
+
+background: linear-gradient(270deg,#ff0080,#7928ca,#2afadf,#ff512f,#00ff87);
+background-size:1000% 1000%;
+
+animation:bgMove 20s infinite linear;
+}
+
+@keyframes bgMove{
+0%{background-position:0% 50%}
+50%{background-position:100% 50%}
+100%{background-position:0% 50%}
+}
+
+.dashboard{
+display:flex;
+flex-direction:column;
+align-items:center;
+height:100vh;
+}
+
+.cards{
+display:flex;
+flex-wrap:wrap;
+justify-content:center;
+}
+
+.card{
+background:rgba(0,0,0,0.35);
+backdrop-filter:blur(12px);
+
+padding:20px;
+margin:15px;
+
+border-radius:15px;
+
+width:260px;
+text-align:center;
+
+transition:0.3s;
+}
+
+.card:hover{
+transform:scale(1.07);
+}
+
+.passwordBox{
+margin:20px;
+}
+
+input{
+padding:10px;
+font-size:18px;
+border-radius:6px;
+border:none;
+text-align:center;
+}
+
+button{
+padding:10px 20px;
+border:none;
+border-radius:6px;
+background:#22c55e;
+color:white;
+cursor:pointer;
+}
+
+button:hover{
+background:#16a34a;
+}
+
+.doorContainer{
+perspective:1000px;
+}
+
+#door{
+font-size:80px;
+transition:transform 1s;
+transform-origin:left;
+}
+
+.open{
+transform:rotateY(-100deg);
+}
+
+.light-on{
+color:yellow;
+animation:glow 1s infinite alternate;
+}
+
+@keyframes glow{
+from{filter:drop-shadow(0 0 5px yellow)}
+to{filter:drop-shadow(0 0 20px yellow)}
+}
+
+.popup{
+
+position:fixed;
+top:0;
+left:0;
+width:100%;
+height:100%;
+
+background:red;
+
+display:none;
+
+justify-content:center;
+align-items:center;
+
+font-size:70px;
+font-weight:bold;
+
+animation:flash 0.5s infinite;
+
+}
+
+@keyframes flash{
+0%{opacity:1}
+50%{opacity:0.4}
+100%{opacity:1}
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="dashboard">
+
+<h1>SMART DOOR LOCK SYSTEM</h1>
+
+<div class="passwordBox">
+
+<input type="password" id="password" placeholder="Enter Password">
+
+<button onclick="sendPassword()">Unlock</button>
+
+</div>
+
+<div class="cards">
+
+<div class="card">
+
+<h3>Temperature Gauge</h3>
+
+<canvas id="tempGauge"></canvas>
+
+<p id="tempValue">-- °C</p>
+
+</div>
+
+<div class="card">
+
+<h3>Humidity Gauge</h3>
+
+<canvas id="humGauge"></canvas>
+
+<p id="humValue">-- %</p>
+
+</div>
+
+<div class="card">
+
+<h3>Door</h3>
+
+<div class="doorContainer">
+<div id="door">🚪</div>
+</div>
+
+<p id="doorStatus">Waiting...</p>
+
+</div>
+
+<div class="card">
+
+<h3>Light</h3>
+
+<div id="lightIcon" style="font-size:70px;">💡</div>
+
+<p id="lightStatus">OFF</p>
+
+</div>
+
+</div>
+
+</div>
+
+<div id="alertPopup" class="popup">
+🚨 INTRUDER ALERT 🚨
+</div>
+
+<script>
+
+const client = mqtt.connect("ws://broker.hivemq.com:8000/mqtt")
+
+function sendPassword(){
+
+let pass=document.getElementById("password").value
+
+client.publish("smartlock/password",pass)
+
+document.getElementById("password").value=""
+
+}
+
+/* Gauge Charts */
+
+const tempGauge = new Chart(document.getElementById("tempGauge"),{
+type:"doughnut",
+data:{
+datasets:[{
+data:[0,50],
+backgroundColor:["#ff4d4d","#333"]
+}]
+},
+options:{
+rotation:270,
+circumference:180,
+plugins:{legend:{display:false}}
+}
+})
+
+const humGauge = new Chart(document.getElementById("humGauge"),{
+type:"doughnut",
+data:{
+datasets:[{
+data:[0,100],
+backgroundColor:["#00e5ff","#333"]
+}]
+},
+options:{
+rotation:270,
+circumference:180,
+plugins:{legend:{display:false}}
+}
+})
+
+client.on("connect",()=>{
+
+console.log("MQTT Connected")
+
+client.subscribe("smartlock/status")
+client.subscribe("smartlock/dht")
+client.subscribe("smartlock/light")
+
+})
+
+client.on("message",(topic,message)=>{
+
+message=message.toString()
+
+if(topic==="smartlock/dht"){
+
+let data=message.split(",")
+
+let temp=parseFloat(data[0])
+let hum=parseFloat(data[1])
+
+tempGauge.data.datasets[0].data=[temp,50-temp]
+tempGauge.update()
+
+humGauge.data.datasets[0].data=[hum,100-hum]
+humGauge.update()
+
+document.getElementById("tempValue").innerHTML=temp+" °C"
+document.getElementById("humValue").innerHTML=hum+" %"
+
+}
+
+if(topic==="smartlock/status"){
+
+document.getElementById("doorStatus").innerHTML=message
+
+if(message.includes("Door Opened")){
+document.getElementById("door").classList.add("open")
+}
+
+if(message.includes("Door Closed")){
+document.getElementById("door").classList.remove("open")
+}
+
+if(message.includes("Intruder Alert")){
+
+let popup=document.getElementById("alertPopup")
+
+popup.style.display="flex"
+
+setTimeout(()=>{
+
+popup.style.display="none"
+
+},5000)
+
+}
+
+}
+
+if(topic==="smartlock/light"){
+
+document.getElementById("lightStatus").innerHTML=message
+
+if(message==="ON"){
+document.getElementById("lightIcon").classList.add("light-on")
+}else{
+document.getElementById("lightIcon").classList.remove("light-on")
+}
+
+}
+
+})
+
+</script>
+
+</body>
+</html>
