@@ -22,8 +22,8 @@ Servo doorServo;
 DHT dht(DHTPIN, DHTTYPE);
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
-const char* ssid = "Kalyan";
-const char* password = "Kalyanpavan";
+const char* ssid = "amulya";
+const char* password = "Amulya";
 const char* mqtt_server = "broker.hivemq.com";
 
 WiFiClient espClient;
